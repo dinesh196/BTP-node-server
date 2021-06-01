@@ -6,11 +6,14 @@ const port = 3000
 app.get('/', (req, res) => {
     var dataToSend;
     // spawn new child process to call the python script
-    // const python = spawn('python', ['script1.py']);
-    const python = spawn('python', ['script2.py', 'node', 'python']);
+
+    const python = spawn('python', ['aenn2_v1.py']);
+
     // collect data from script
     python.stdout.on('data', function (data) {
         console.log('Pipe data from python script ...');
+        let json = JSON.stringify(data);
+        console.log(json);
         dataToSend = data.toString();
     });
     // in close event we are sure that stream from child process is closed
