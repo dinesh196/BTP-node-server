@@ -1,3 +1,5 @@
+import warnings
+import glob
 import os
 import sys
 from datetime import datetime
@@ -12,7 +14,13 @@ from mpl_toolkits.mplot3d import Axes3D
 import seaborn as sns
 from IPython.display import Image, display
 sns.set_style('darkgrid')
-import warnings
+
+# * means all if need specific format then *.csv
+list_of_files = glob.glob(
+    '/Users/dineshchavan/Desktop/BTP-node-server/public/*')
+latest_file = max(list_of_files, key=os.path.getctime)
+# print(latest_file)
+
 
 warnings.filterwarnings("ignore")
 USE_CUDA = True
@@ -21,10 +29,10 @@ seed_value = 1234
 np.random.seed(seed_value)
 torch.cuda.manual_seed(seed_value)
 #convert dataset to dataframe
-df = pd.read_csv("v1_dataset_0.1.csv")
+df = pd.read_csv(latest_file)
 #remove the categorical label column to prepare dataframe for preprocessing
 label = df.pop('label')
-#plot posting key and general ledger account 
+#plot posting key and general ledger account
 #fig, ax = plt.subplots(1,2)
 #fig.set_figwidth(20)
 #plot the first for posting key attribute
@@ -59,9 +67,9 @@ num_attr_vis['label'] = label
 #g.fig.suptitle("Distribution of DMBTR vs WRBTR amount values")
 #g.fig.set_size_inches(15,5)
 #joining the encoded and normalized attributes
-from tensorflow.keras.preprocessing.sequence import pad_sequences 
-df_cat_trans_padded = pd.DataFrame(pad_sequences(df_cat_trans.values.tolist(), maxlen = 459, padding = 'post'))
-df_trans = pd.concat([df_cat_trans_padded, df_num_attr], axis = 1)
+# from tensorflow.keras.preprocessing.sequence import pad_sequences
+# df_cat_trans_padded = pd.DataFrame(pad_sequences(df_cat_trans.values.tolist(), maxlen = 459, padding = 'post'))
+df_trans = pd.concat([df_cat_trans, df_num_attr], axis = 1)
 df_trans.shape
 
 class encoder(nn.Module):
@@ -105,7 +113,7 @@ class encoder(nn.Module):
         self.encoder_R9= nn.LeakyReLU(negative_slope = 0.4, inplace = True)
         #dropout layer for probabilit = p
         self.dropout = nn.Dropout(p = 0.0, inplace = True)
-        
+
     def forward(self, x):
         #network layers forward pass through
         x = self.encoder_R1(self.dropout(self.encoder_L1(x)))
@@ -117,9 +125,9 @@ class encoder(nn.Module):
         x = self.encoder_R7(self.dropout(self.encoder_L7(x)))
         x = self.encoder_R8(self.dropout(self.encoder_L8(x)))
         x = self.encoder_R9(self.encoder_L9(x))
-        
+
         return x
-        
+
 #initialize training
 encoder_train = encoder()
 # print(encoder_train)#network summary
@@ -154,9 +162,9 @@ class decoder(nn.Module):
         self.decoder_L9 = nn.Linear(in_features= 512, out_features=df_trans.shape[1], bias= True)
         nn.init.xavier_uniform_(self.decoder_L9.weight)
         self.decoder_R9 = nn.LeakyReLU(negative_slope=0.4, inplace= True)
-        
+
         self.dropout = nn.Dropout(p=0.0, inplace= True)
-        
+
     def forward(self, x):
         x = self.decoder_R1(self.dropout(self.decoder_L1(x)))
         x = self.decoder_R2(self.dropout(self.decoder_L2(x)))
@@ -167,7 +175,7 @@ class decoder(nn.Module):
         x = self.decoder_R7(self.dropout(self.decoder_L7(x)))
         x = self.decoder_R8(self.dropout(self.decoder_L8(x)))
         x = self.decoder_R9(self.decoder_L9(x))
-        
+
         return x
 
 decoder_train = decoder()
@@ -182,7 +190,9 @@ decoder_optimizer = torch.optim.Adam(decoder_train.parameters(), lr = learning_r
 #training process
 num_epochs = 5
 mini_batch_size = 128
-torch_dataset = torch.from_numpy(df_trans.values).float()
+frac = 0.2
+df_trans_sample = df_trans.sample(frac = frac)
+torch_dataset = torch.from_numpy(df_trans_sample.values).float()
 dataloader = DataLoader(torch_dataset, batch_size=mini_batch_size, shuffle= True)
 losses= []
 data = autograd.Variable(torch_dataset)# encoded data to torch variable
@@ -194,30 +204,30 @@ data = autograd.Variable(torch_dataset)# encoded data to torch variable
 #     # encoder_train.train()
 #     # decoder_train.train()
 #     start_time = datetime.now()
-    
+
 #     #iterate over all batches
 #     for mini_batch_data in dataloader:
 #         mini_batch_counter += 1
 #         mini_batch_torch = autograd.Variable(mini_batch_data)
-        
+
 #         #1. run forward pass
 #         z_rep = encoder_train(mini_batch_torch)
 #         mini_batch_reconstruction = decoder_train(z_rep)
-        
+
 #         #2. reconstruction loss
 #         reconstruction_loss = loss_function(mini_batch_reconstruction, mini_batch_torch)
-        
+
 #         #3. backward pass
 #         #reset gradients
 #         decoder_optimizer.zero_grad()
 #         encoder_optimizer.zero_grad()
 #         #run backward pass
 #         reconstruction_loss.backward()
-        
+
 #         #4. update model parameters
 #         decoder_optimizer.step()
 #         encoder_optimizer.step()
-        
+
 #         # monitor training process
 #         if mini_batch_counter % 1000 == 0:
 #             mode = 'GPU'
@@ -225,7 +235,7 @@ data = autograd.Variable(torch_dataset)# encoded data to torch variable
 #             end_time = datetime.now()-start_time
 #             print('[LOG{}], training status, epoch: [{:04}/{:04}],batch: {:04}, loss: {}, mode: {}, time required: {}' .format(now, (epoch+1), num_epochs, mini_batch_counter, np.round(reconstruction_loss.item(),4), mode, end_time))
 #             start_time = datetime.now()
-#     #!!!!evaluate model performance on training data *use when changing epochs !!! change the address according to machine 
+#     #!!!!evaluate model performance on training data *use when changing epochs !!! change the address according to machine
 #     #encoder_train.cpu().eval()# on CPU to check for entire dataset GPU less memory
 #     #decoder_train.cpu().eval()
 #     #encoder_train.eval()
@@ -241,7 +251,7 @@ data = autograd.Variable(torch_dataset)# encoded data to torch variable
 #     #encoder_model_name= "ep_{}_encoder_model.pth".format((epoch+1))
 #     #torch.save(encoder_train.state_dict(), os.path.join("C:/Users/acer/models2", encoder_model_name))
 #     #decoder_model_name= "ep_{}_decoder_model.pth".format((epoch+1))
-#     #torch.save(decoder_train.state_dict(), os.path.join("C:/Users/acer/models2", decoder_model_name))        
+#     #torch.save(decoder_train.state_dict(), os.path.join("C:/Users/acer/models2", decoder_model_name))
 #plt.plot(range(0, len(losses)),losses)
 #plt.xlabel('Training epoch')
 #plt.xlim([0, len(losses)])
@@ -265,16 +275,19 @@ reconstruction_loss_transaction= np.zeros(reconstruction.size()[0])#initialize B
 result = ["" for x in range(reconstruction.size()[0])]
 for i in range(0, reconstruction.size()[0]):
     reconstruction_loss_transaction[i] = loss_function(reconstruction[i], data[i]).item()
-    if(reconstruction_loss_transaction[i]>0.2):
+    if(reconstruction_loss_transaction[i]>0.05):
         result[i] = "anomaly"
+        # print(result[i], ": " )
+        print(i)
+        print(": anomaly")
     else:
         result[i] = "regular"
 
     # if(i% 10000 == 0):
     #     print("collected individual reconstruction loss of: {:06}/{:06} transactions" .format(i, reconstruction.size()[0]))
 
-print(result)
- 
+# print(result)
+
 # fig = plt.figure()
 # ax = fig.add_subplot(111)
 # plot_data = np.column_stack((np.arange(len(reconstruction_loss_transaction)), reconstruction_loss_transaction))#assign unique id to transactions
@@ -289,9 +302,3 @@ print(result)
 # df['label'] = label
 # df[reconstruction_loss_transaction >= 0.1]
 # df.head()
-
-
-
-
-
-
